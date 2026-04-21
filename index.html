@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>magic — Генератор звітів</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='3' y='9' width='26' height='20' rx='5' fill='%2338A0FF'/><text x='9' y='25' fill='white' font-size='15' font-weight='900'>m</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Onest', system-ui, -apple-system, sans-serif; background: #F8F8FC; overflow: hidden; }
+  input, textarea, button { font-family: inherit; }
+  input:focus, textarea:focus { outline: none; border-color: #38A0FF !important; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D8D8E8; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #B0B0C8; }
+  @media print {
+    .no-print { display: none !important; }
+    .slide-area { padding: 0 !important; }
+    .slide-container { max-width: 100% !important; border-radius: 0 !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+const { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts;
+
+const BLUE = "#38A0FF";
+const PURPLE = "#AA7AFF";
+const INK800 = "#12121E";
+const INK400 = "#6B6B8A";
+const INK200 = "#B0B0C8";
+const INK100 = "#D8D8E8";
+const INK50 = "#F0F0F8";
+const SUCCESS = "#2EC28A";
+const WARNING = "#FFB020";
+const DANGER = "#F5525C";
+const GRADIENT = "linear-gradient(135deg, #38A0FF, #AA7AFF)";
+
+const defaultData = {
+  month: "Березень", nextMonth: "Квітень", clientName: "Назва клієнта",
+  budget: 309608, revenue: 2166768, purchases: 398, avgCheck: 5444, cpa: 777, roas: 7.0,
+  prevBudget: 300677, prevRevenue: 2405417, prevPurchases: 437, prevAvgCheck: 5500, prevCpa: 687, prevRoas: 8.0,
+  kpiBudget: 300677, kpiRevenue: 2405417, kpiPurchases: 437, kpiAvgCheck: 5500, kpiRoas: 8.0,
+  metaBudget: 185000, metaRevenue: 1350000, metaPurchases: 245, metaRoas: 7.3,
+  googleBudget: 95000, googleRevenue: 620000, googlePurchases: 120, googleRoas: 6.5,
+  tiktokBudget: 29608, tiktokRevenue: 196768, tiktokPurchases: 33, tiktokRoas: 6.6,
+  impressions: 1250000, clicks: 42500, addToCart: 3200,
+  cpaW1: 1200, cpaW2: 950, cpaW3: 780, cpaW4: 680,
+  roasW1: 5.2, roasW2: 6.1, roasW3: 7.8, roasW4: 8.5,
+  products: [
+    { name: "Road 2.0 (чорний)", revenue: 680000, sales: 98, roas: 8.2 },
+    { name: "Holster", revenue: 520000, sales: 145, roas: 9.1 },
+    { name: "Grif Tote", revenue: 340000, sales: 72, roas: 6.8 },
+    { name: "Road 2.0 (хакі)", revenue: 280000, sales: 55, roas: 5.9 },
+    { name: "Messenger Pro", revenue: 190000, sales: 28, roas: 4.5 },
+  ],
+  creatives: [
+    { name: "Grif Tote — формат", ctr: 3.2, cpa: 580, roas: 9.4, purchases: 45 },
+    { name: "Road 2.0 — відео UGC", ctr: 2.8, cpa: 640, roas: 8.6, purchases: 38 },
+    { name: "Holster — тактичний", ctr: 2.5, cpa: 720, roas: 7.6, purchases: 32 },
+  ],
+  conclusions: [
+    { title: "Ринок вирівнюється", text: "CPA стабілізувався у діапазоні 600-1000 грн у другій половині місяця." },
+    { title: "Змінився локомотив продажів", text: "Holster вийшов на 1 місце по кількості продажів у CRM." },
+    { title: "UGC працює найкраще", text: "Креативи з UGC показали на 40% нижчий CPA." },
+  ],
+  plans: [
+    { title: "Запуск на США", text: "Тестові кампанії на американський ринок через Meta Ads." },
+    { title: "Автоматизація каталожки", text: "Динамічні оголошення замість ручних." },
+    { title: "Запуск літньої лінійки", text: "Креативна стратегія для нової колекції." },
+  ],
+  nextBudget: 300677, nextRevenue: 2405417, nextPurchases: 437, nextAvgCheck: 5500, nextCpa: 687, nextRoas: 8.0,
+};
+
+const fmt = (n) => n == null ? "0" : Number(n).toLocaleString("uk-UA");
+const pct = (f, p) => p ? Math.round((f / p) * 100) : 0;
+const chg = (c, p) => p ? (((c - p) / p) * 100).toFixed(1) : "0";
+
+/* ────── STORAGE ────── */
+const STORAGE_KEY = "magic_report_data";
+function loadFromStorage() {
+  try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function saveToStorage(d) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {}
+}
+function exportJSON(d) {
+  const blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url;
+  a.download = `report_${d.month}_${d.clientName}.json`.replace(/\s/g, "_");
+  a.click(); URL.revokeObjectURL(url);
+}
+
+/* ────── SLIDE COMPONENTS ────── */
+function LogoSvg({ size = 28, light = false }) {
+  const bg = light ? "rgba(255,255,255,0.9)" : BLUE;
+  const fg = light ? BLUE : "#fff";
+  return (
+    <svg width={size} height={size} viewBox="0 0 28 28" fill="none">
+      <rect x="2" y="8" width="24" height="18" rx="4" fill={bg}/>
+      <path d="M9 8 C9 4 14 2 14 2 C14 2 19 4 19 8" stroke={bg} strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      <text x="8" y="22" fill={fg} fontSize="13" fontWeight="900" fontFamily="Onest, sans-serif">m</text>
+    </svg>
+  );
+}
+
+function TitleSlide({ d }) {
+  return (
+    <div style={{ background: GRADIENT, color: "#fff", height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", padding: "48px 56px", position: "relative", borderRadius: 20, overflow: "hidden" }}>
+      <div style={{ position: "absolute", top: 24, left: 28 }}><LogoSvg light /></div>
+      <h1 style={{ fontSize: 44, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", lineHeight: 1.1 }}>Звіт за {d.month.toLowerCase()}</h1>
+      <p style={{ fontSize: 20, fontWeight: 300, marginTop: 12, opacity: 0.9 }}>{d.clientName}</p>
+      <p style={{ position: "absolute", bottom: 24, left: 28, fontSize: 12, opacity: 0.6, fontWeight: 300 }}>magic · advertise for e-commerce</p>
+    </div>
+  );
+}
+
+function DashboardSlide({ d }) {
+  const metrics = [
+    { label: "Бюджет", value: `₴${fmt(d.budget)}`, ch: chg(d.budget, d.prevBudget), up: d.budget >= d.prevBudget },
+    { label: "Оборот", value: `₴${fmt(d.revenue)}`, ch: chg(d.revenue, d.prevRevenue), up: d.revenue >= d.prevRevenue },
+    { label: "Покупок", value: fmt(d.purchases), ch: chg(d.purchases, d.prevPurchases), up: d.purchases >= d.prevPurchases },
+    { label: "ROAS", value: d.roas?.toFixed(1), ch: chg(d.roas, d.prevRoas), up: d.roas >= d.prevRoas },
+    { label: "Ср. чек", value: `₴${fmt(d.avgCheck)}`, ch: chg(d.avgCheck, d.prevAvgCheck), up: d.avgCheck >= d.prevAvgCheck },
+    { label: "CPA", value: `₴${fmt(d.cpa)}`, ch: chg(d.cpa, d.prevCpa), up: d.cpa <= d.prevCpa },
+  ];
+  return (
+    <div style={{ background: INK50, height: "100%", padding: "36px 40px", borderRadius: 20 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 900, color: INK800, margin: "0 0 24px" }}>Загальний дашборд</h2>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+        {metrics.map((m, i) => (
+          <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "20px 22px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+            <div style={{ fontSize: 24, fontWeight: 900, color: INK800, lineHeight: 1.2 }}>{m.value}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+              <span style={{ fontSize: 13, color: INK400, fontWeight: 300 }}>{m.label}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: m.up ? SUCCESS : DANGER }}>
+                {m.up ? "↑" : "↓"} {m.ch > 0 ? "+" : ""}{m.ch}%
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p style={{ fontSize: 11, color: INK200, marginTop: 20, fontWeight: 300 }}>Порівняння з попереднім місяцем</p>
+    </div>
+  );
+}
+
+function KpiSlide({ d }) {
+  const kpis = [
+    { name: "Інвестиції", plan: d.kpiBudget, fact: d.budget, sfx: " грн" },
+    { name: "Оборот", plan: d.kpiRevenue, fact: d.revenue, sfx: " грн" },
+    { name: "Ср. чек", plan: d.kpiAvgCheck, fact: d.avgCheck, sfx: " грн" },
+    { name: "ROAS", plan: d.kpiRoas, fact: d.roas, sfx: "", dec: true },
+    { name: "Замовлень", plan: d.kpiPurchases, fact: d.purchases, sfx: "" },
+  ];
+  return (
+    <div style={{ background: INK50, height: "100%", padding: "36px 40px", borderRadius: 20 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 900, color: INK800, margin: "0 0 24px" }}>Виконання KPI</h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {kpis.map((k, i) => {
+          const p = k.dec ? (k.plan ? Math.round(k.fact / k.plan * 100) : 0) : pct(k.fact, k.plan);
+          const c = p >= 100 ? SUCCESS : p >= 90 ? BLUE : DANGER;
+          return (
+            <div key={i}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: INK800 }}>{k.name}</span>
+                <div style={{ display: "flex", gap: 16 }}>
+                  <span style={{ fontSize: 12, color: INK400, fontWeight: 300 }}>
+                    План: {k.dec ? k.plan : fmt(k.plan)}{k.sfx} / Факт: {k.dec ? k.fact?.toFixed(1) : fmt(k.fact)}{k.sfx}
+                  </span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: c, minWidth: 44, textAlign: "right" }}>{p}%</span>
+                </div>
+              </div>
+              <div style={{ height: 10, background: "#E8E8F0", borderRadius: 5, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${Math.min(p, 100)}%`, background: c, borderRadius: 5, transition: "width 0.4s" }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ChannelsSlide({ d }) {
+  const data = [
+    { name: "Meta", budget: d.metaBudget, revenue: d.metaRevenue },
+    { name: "Google", budget: d.googleBudget, revenue: d.googleRevenue },
+    { name: "TikTok", budget: d.tiktokBudget, revenue: d.tiktokRevenue },
+  ];
+  const ch = [
+    { name: "Meta Ads", budget: d.metaBudget, roas: d.metaRoas, purchases: d.metaPurchases },
+    { name: "Google Ads", budget: d.googleBudget, roas: d.googleRoas, purchases: d.googlePurchases },
+    { name: "TikTok Ads", budget: d.tiktokBudget, roas: d.tiktokRoas, purchases: d.tiktokPurchases },
+  ];
+  return (
+    <div style={{ background: INK50, height: "100%", padding: "36px 40px", borderRadius: 20 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 900, color: INK800, margin: "0 0 20px" }}>Розбивка по каналах</h2>
+      <div style={{ display: "flex", gap: 20, height: "calc(100% - 80px)" }}>
+        <div style={{ flex: "1 1 55%", background: "#fff", borderRadius: 14, padding: "12px 8px 4px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} barCategoryGap="25%">
+              <CartesianGrid strokeDasharray="3 3" stroke={INK100} vertical={false} />
+              <XAxis dataKey="name" tick={{ fill: INK400, fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: INK200, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}K` : v} />
+              <Tooltip formatter={(v) => `₴${fmt(v)}`} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="budget" name="Бюджет" fill={BLUE} radius={[6,6,0,0]} />
+              <Bar dataKey="revenue" name="Оборот" fill={PURPLE} radius={[6,6,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{ flex: "1 1 40%", display: "flex", flexDirection: "column", gap: 12 }}>
+          {ch.map((c, i) => (
+            <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "16px 18px", flex: 1, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: INK800, marginBottom: 6 }}>{c.name}</div>
+              <div style={{ fontSize: 12, color: INK400, fontWeight: 300, lineHeight: 1.6 }}>
+                Бюджет: ₴{fmt(c.budget)}<br/>ROAS: {c.roas} · Покупок: {c.purchases}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FunnelSlide({ d }) {
+  const ctr = d.impressions ? ((d.clicks / d.impressions) * 100).toFixed(1) : 0;
+  const atc = d.clicks ? ((d.addToCart / d.clicks) * 100).toFixed(1) : 0;
+  const pr = d.addToCart ? ((d.purchases / d.addToCart) * 100).toFixed(1) : 0;
+  const stages = [
+    { label: "Покази", value: d.impressions, pct: "100%", w: 100 },
+    { label: "Кліки", value: d.clicks, pct: `${ctr}% CTR`, w: 75 },
+    { label: "Додано в кошик", value: d.addToCart, pct: `${atc}% CR`, w: 50 },
+    { label: "Покупки", value: d.purchases, pct: `${pr}% CR`, w: 30 },
+  ];
+  const cols = [BLUE, "#5DADFF", "#8B8EFF", PURPLE];
+  return (
+    <div style={{ background: INK50, height: "100%", padding: "36px 40px", borderRadius: 20 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 900, color: INK800, margin: "0 0 24px" }}>Воронка конверсії</h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, alignItems: "center" }}>
+        {stages.map((s, i) => (
+          <div key={i} style={{ width: `${s.w}%`, minWidth: 200, background: cols[i], borderRadius: 12, padding: "14px 20px", color: "#fff", transition: "width 0.4s" }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>{s.label}</span>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>{fmt(s.value)}</span>
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2, fontWeight: 300 }}>{s.pct}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WeeklySlide({ d }) {
+  const cpaData = [{w:"Тиж 1",v:d.cpaW1},{w:"Тиж 2",v:d.cpaW2},{w:"Тиж 3",v:d.cpaW3},{w:"Тиж 4",v:d.cpaW4}];
+  const roasData = [{w:"Тиж 1",v:d.roasW1},{w:"Тиж 2",v:d.roasW2},{w:"Тиж 3",v:d.roasW3},{w:"Тиж 4",v:d.roasW4}];
+  const cs = { background: "#fff", borderRadius: 14, padding: "16px 8px 4px 0", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" };
+  return (
+    <div style={{ background: INK50, height: "100%", padding: "36px 40px", borderRadius: 20 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 900, color: INK800, margin: "0 0 20px" }}>Динаміка по тижнях</h2>
+      <div style={{ display: "flex", gap: 16, height: "calc(100% - 80px)" }}>
+        <div style={{ flex: 1, ...cs }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: INK800, paddingLeft: 16, marginBottom: 4 }}>CPA (грн)</div>
+          <ResponsiveContainer width="100%" height="90%">
+            <LineChart data={cpaData}><CartesianGrid strokeDasharray="3 3" stroke={INK100} vertical={false}/><XAxis dataKey="w" tick={{fill:INK400,fontSize:11}} axisLine={false} tickLine={false}/><YAxis tick={{fill:INK200,fontSize:10}} axisLine={false} tickLine={false}/><Tooltip formatter={v=>`₴${fmt(v)}`}/><Line type="monotone" dataKey="v" stroke={BLUE} strokeWidth={3} dot={{r:5,fill:BLUE}} name="CPA"/></LineChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{ flex: 1, ...cs }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: INK800, paddingLeft: 16, marginBottom: 4 }}>ROAS</div>
+          <ResponsiveContainer width="100%" height="90%">
+            <LineChart data={roasData}><CartesianGrid strokeDasharray="3 3" stroke={INK100} vertical={false}/><XAxis dataKey="w" tick={{fill:INK400,fontSize:11}} axisLine={false} tickLine={false}/><YAxis tick={{fill:INK200,fontSize:10}} axisLine={false} tickLine={false}/><Tooltip/><Line type="monotone" dataKey="v" stroke={PURPLE} strokeWidth={3} dot={{r:5,fill:PURPLE}} name="ROAS"/></LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductsSlide({ d }) {
+  const tot = d.products.reduce((a, p) => a + p.revenue, 0);
+  return (
+    <div style={{ background: INK50, height: "100%", padding: "36px 40px", borderRadius: 20 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 900, color: INK800, margin: "0 0 20px" }}>Топ-5 товарів з реклами</h2>
+      <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ background: BLUE }}>{["Товар","Дохід","Продажів","ROAS","Частка"].map(h=><th key={h} style={{padding:"10px 16px",color:"#fff",fontWeight:700,textAlign:"left"}}>{h}</th>)}</tr></thead>
+          <tbody>{d.products.map((p,i)=><tr key={i} style={{background:i%2?INK50:"#fff"}}><td style={{padding:"10px 16px",fontWeight:500,color:INK800}}>{p.name}</td><td style={{padding:"10px 16px",color:INK800}}>₴{fmt(p.revenue)}</td><td style={{padding:"10px 16px",color:INK800}}>{p.sales}</td><td style={{padding:"10px 16px",color:INK800}}>{p.roas}</td><td style={{padding:"10px 16px",color:INK800}}>{tot?Math.round(p.revenue/tot*100):0}%</td></tr>)}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function CreativesSlide({ d }) {
+  return (
+    <div style={{ background: INK50, height: "100%", padding: "36px 40px", borderRadius: 20 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 900, color: INK800, margin: "0 0 20px" }}>Найкращі креативи</h2>
+      <div style={{ display: "flex", gap: 16 }}>
+        {d.creatives.map((c, i) => (
+          <div key={i} style={{ flex: 1, background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: BLUE, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{i+1}</div>
+            <div style={{ background: INK50, borderRadius: 10, height: 100, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14, fontSize: 12, color: INK200 }}>Скріншот</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: INK800, marginBottom: 12 }}>{c.name}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px" }}>
+              {[["CTR",`${c.ctr}%`],["CPA",`₴${fmt(c.cpa)}`],["ROAS",c.roas],["Покупок",c.purchases]].map(([l,v])=><div key={l}><div style={{fontSize:10,color:INK400,fontWeight:300}}>{l}</div><div style={{fontSize:15,fontWeight:700,color:INK800}}>{v}</div></div>)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConclusionsSlide({ d }) {
+  return (
+    <div style={{ background: INK50, height: "100%", padding: "36px 40px", borderRadius: 20 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 900, color: INK800, margin: "0 0 20px" }}>Висновки</h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {d.conclusions.map((c, i) => (
+          <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "18px 22px", display: "flex", gap: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+            <div style={{ fontSize: 26, fontWeight: 900, color: BLUE, lineHeight: 1, minWidth: 36 }}>0{i+1}</div>
+            <div><div style={{ fontSize: 15, fontWeight: 700, color: INK800, marginBottom: 4 }}>{c.title}</div><div style={{ fontSize: 12, color: INK400, fontWeight: 300, lineHeight: 1.5 }}>{c.text}</div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PlanSlide({ d }) {
+  return (
+    <div style={{ background: GRADIENT, height: "100%", padding: "36px 40px", borderRadius: 20 }}>
+      <h2 style={{ fontSize: 28, fontWeight: 900, color: "#fff", margin: "0 0 24px" }}>План на {d.nextMonth.toLowerCase()}</h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {d.plans.map((p, i) => (
+          <div key={i} style={{ background: "rgba(255,255,255,0.15)", borderRadius: 14, padding: "18px 22px", display: "flex", gap: 16 }}>
+            <div style={{ fontSize: 24, fontWeight: 900, color: "#fff", opacity: 0.8, minWidth: 36 }}>0{i+1}</div>
+            <div><div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 4 }}>{p.title}</div><div style={{ fontSize: 12, color: "#fff", opacity: 0.8, fontWeight: 300, lineHeight: 1.5 }}>{p.text}</div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NextKpiSlide({ d }) {
+  const items = [
+    { label: "Бюджет", value: `₴${fmt(d.nextBudget)}` },{ label: "Оборот", value: `₴${fmt(d.nextRevenue)}` },
+    { label: "Покупок", value: fmt(d.nextPurchases) },{ label: "ROAS", value: d.nextRoas?.toFixed(1) },
+    { label: "Ср. чек", value: `₴${fmt(d.nextAvgCheck)}` },{ label: "CPA", value: `₴${fmt(d.nextCpa)}` },
+  ];
+  return (
+    <div style={{ background: INK50, height: "100%", padding: "36px 40px", borderRadius: 20 }}>
+      <h2 style={{ fontSize: 26, fontWeight: 900, color: INK800, margin: "0 0 24px" }}>KPI на {d.nextMonth.toLowerCase()}</h2>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+        {items.map((m, i) => (
+          <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "24px 22px", textAlign: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+            <div style={{ fontSize: 28, fontWeight: 900, color: INK800 }}>{m.value}</div>
+            <div style={{ fontSize: 13, color: INK400, marginTop: 8, fontWeight: 300 }}>{m.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ClosingSlide() {
+  return (
+    <div style={{ background: GRADIENT, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", borderRadius: 20, color: "#fff" }}>
+      <LogoSvg size={64} light />
+      <h1 style={{ fontSize: 48, fontWeight: 900, margin: "20px 0 0", letterSpacing: "-0.03em" }}>Дякуємо</h1>
+      <p style={{ fontSize: 14, marginTop: 8, opacity: 0.8, fontWeight: 300 }}>magic · advertise for e-commerce</p>
+    </div>
+  );
+}
+
+/* ────── FORM ────── */
+function Field({ label, value, onChange, type = "number", small }) {
+  return (
+    <div style={{ flex: small ? "0 0 48%" : 1 }}>
+      <label style={{ fontSize: 11, color: INK400, display: "block", marginBottom: 3, fontWeight: 500 }}>{label}</label>
+      <input type={type} value={value} onChange={e => onChange(type === "number" ? parseFloat(e.target.value) || 0 : e.target.value)}
+        style={{ width: "100%", padding: "7px 10px", border: `1px solid ${INK100}`, borderRadius: 8, fontSize: 13, color: INK800, background: "#fff", boxSizing: "border-box" }} />
+    </div>
+  );
+}
+
+function Section({ title, children, open: init = false }) {
+  const [open, setOpen] = useState(init);
+  return (
+    <div style={{ borderBottom: `1px solid ${INK100}` }}>
+      <button onClick={() => setOpen(!open)} style={{ width: "100%", padding: "12px 0", display: "flex", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, color: INK800 }}>
+        {title}<span style={{ color: INK400, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>▾</span>
+      </button>
+      {open && <div style={{ paddingBottom: 16, display: "flex", flexWrap: "wrap", gap: 10 }}>{children}</div>}
+    </div>
+  );
+}
+
+/* ────── MAIN ────── */
+const SLIDES = [
+  { name: "Титулка", C: TitleSlide },
+  { name: "Дашборд", C: DashboardSlide },
+  { name: "KPI", C: KpiSlide },
+  { name: "Канали", C: ChannelsSlide },
+  { name: "Воронка", C: FunnelSlide },
+  { name: "Тижні", C: WeeklySlide },
+  { name: "Товари", C: ProductsSlide },
+  { name: "Креативи", C: CreativesSlide },
+  { name: "Висновки", C: ConclusionsSlide },
+  { name: "План", C: PlanSlide },
+  { name: "KPI далі", C: NextKpiSlide },
+  { name: "Закриття", C: ClosingSlide },
+];
+
+function App() {
+  const [data, setData] = useState(() => loadFromStorage() || defaultData);
+  const [slide, setSlide] = useState(0);
+  const [showForm, setShowForm] = useState(true);
+  const fileRef = useRef();
+
+  const update = (k, v) => { const n = { ...data, [k]: v }; setData(n); saveToStorage(n); };
+  const updateArr = (arr, idx, key, val) => {
+    const copy = [...data[arr]]; copy[idx] = { ...copy[idx], [key]: val };
+    const n = { ...data, [arr]: copy }; setData(n); saveToStorage(n);
+  };
+
+  const importJSON = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const r = new FileReader();
+    r.onload = (ev) => { try { const d = JSON.parse(ev.target.result); setData(d); saveToStorage(d); } catch { alert("Невалідний JSON"); } };
+    r.readAsText(file);
+  };
+
+  const resetData = () => { if (confirm("Скинути всі дані до початкових?")) { setData(defaultData); saveToStorage(defaultData); } };
+
+  const SlideC = SLIDES[slide].C;
+
+  return (
+    <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+      {showForm && (
+        <div className="no-print" style={{ width: 360, borderRight: `1px solid ${INK100}`, background: "#fff", overflowY: "auto", flexShrink: 0 }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${INK100}`, position: "sticky", top: 0, background: "#fff", zIndex: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: GRADIENT, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ color: "#fff", fontSize: 14, fontWeight: 900 }}>m</span>
+                </div>
+                <span style={{ fontSize: 14, fontWeight: 700, color: INK800 }}>Генератор звітів</span>
+              </div>
+            </div>
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+              <button onClick={() => exportJSON(data)} style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${INK100}`, background: "#fff", cursor: "pointer", fontSize: 11, color: INK800, fontWeight: 500 }}>
+                Експорт JSON
+              </button>
+              <button onClick={() => fileRef.current?.click()} style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${INK100}`, background: "#fff", cursor: "pointer", fontSize: 11, color: INK800, fontWeight: 500 }}>
+                Імпорт JSON
+              </button>
+              <button onClick={resetData} style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${DANGER}33`, background: "#fff", cursor: "pointer", fontSize: 11, color: DANGER, fontWeight: 500 }}>
+                Скинути
+              </button>
+              <input ref={fileRef} type="file" accept=".json" onChange={importJSON} style={{ display: "none" }} />
+            </div>
+          </div>
+
+          <div style={{ padding: "0 20px" }}>
+            <Section title="Загальне" open={true}>
+              <Field label="Місяць" value={data.month} onChange={v=>update("month",v)} type="text"/>
+              <Field label="Наступний місяць" value={data.nextMonth} onChange={v=>update("nextMonth",v)} type="text"/>
+              <Field label="Клієнт" value={data.clientName} onChange={v=>update("clientName",v)} type="text"/>
+            </Section>
+            <Section title="Метрики — поточний" open={true}>
+              <Field label="Бюджет" value={data.budget} onChange={v=>update("budget",v)} small/>
+              <Field label="Оборот" value={data.revenue} onChange={v=>update("revenue",v)} small/>
+              <Field label="Покупок" value={data.purchases} onChange={v=>update("purchases",v)} small/>
+              <Field label="ROAS" value={data.roas} onChange={v=>update("roas",v)} small/>
+              <Field label="Ср. чек" value={data.avgCheck} onChange={v=>update("avgCheck",v)} small/>
+              <Field label="CPA" value={data.cpa} onChange={v=>update("cpa",v)} small/>
+            </Section>
+            <Section title="Метрики — попередній">
+              <Field label="Бюджет" value={data.prevBudget} onChange={v=>update("prevBudget",v)} small/>
+              <Field label="Оборот" value={data.prevRevenue} onChange={v=>update("prevRevenue",v)} small/>
+              <Field label="Покупок" value={data.prevPurchases} onChange={v=>update("prevPurchases",v)} small/>
+              <Field label="ROAS" value={data.prevRoas} onChange={v=>update("prevRoas",v)} small/>
+              <Field label="Ср. чек" value={data.prevAvgCheck} onChange={v=>update("prevAvgCheck",v)} small/>
+              <Field label="CPA" value={data.prevCpa} onChange={v=>update("prevCpa",v)} small/>
+            </Section>
+            <Section title="KPI-план">
+              <Field label="Бюджет" value={data.kpiBudget} onChange={v=>update("kpiBudget",v)} small/>
+              <Field label="Оборот" value={data.kpiRevenue} onChange={v=>update("kpiRevenue",v)} small/>
+              <Field label="Покупок" value={data.kpiPurchases} onChange={v=>update("kpiPurchases",v)} small/>
+              <Field label="ROAS" value={data.kpiRoas} onChange={v=>update("kpiRoas",v)} small/>
+              <Field label="Ср. чек" value={data.kpiAvgCheck} onChange={v=>update("kpiAvgCheck",v)} small/>
+            </Section>
+            <Section title="Meta Ads">
+              <Field label="Бюджет" value={data.metaBudget} onChange={v=>update("metaBudget",v)} small/>
+              <Field label="Оборот" value={data.metaRevenue} onChange={v=>update("metaRevenue",v)} small/>
+              <Field label="Покупок" value={data.metaPurchases} onChange={v=>update("metaPurchases",v)} small/>
+              <Field label="ROAS" value={data.metaRoas} onChange={v=>update("metaRoas",v)} small/>
+            </Section>
+            <Section title="Google Ads">
+              <Field label="Бюджет" value={data.googleBudget} onChange={v=>update("googleBudget",v)} small/>
+              <Field label="Оборот" value={data.googleRevenue} onChange={v=>update("googleRevenue",v)} small/>
+              <Field label="Покупок" value={data.googlePurchases} onChange={v=>update("googlePurchases",v)} small/>
+              <Field label="ROAS" value={data.googleRoas} onChange={v=>update("googleRoas",v)} small/>
+            </Section>
+            <Section title="TikTok Ads">
+              <Field label="Бюджет" value={data.tiktokBudget} onChange={v=>update("tiktokBudget",v)} small/>
+              <Field label="Оборот" value={data.tiktokRevenue} onChange={v=>update("tiktokRevenue",v)} small/>
+              <Field label="Покупок" value={data.tiktokPurchases} onChange={v=>update("tiktokPurchases",v)} small/>
+              <Field label="ROAS" value={data.tiktokRoas} onChange={v=>update("tiktokRoas",v)} small/>
+            </Section>
+            <Section title="Воронка">
+              <Field label="Покази" value={data.impressions} onChange={v=>update("impressions",v)} small/>
+              <Field label="Кліки" value={data.clicks} onChange={v=>update("clicks",v)} small/>
+              <Field label="Додано в кошик" value={data.addToCart} onChange={v=>update("addToCart",v)} small/>
+            </Section>
+            <Section title="CPA по тижнях">
+              <Field label="Тиж 1" value={data.cpaW1} onChange={v=>update("cpaW1",v)} small/>
+              <Field label="Тиж 2" value={data.cpaW2} onChange={v=>update("cpaW2",v)} small/>
+              <Field label="Тиж 3" value={data.cpaW3} onChange={v=>update("cpaW3",v)} small/>
+              <Field label="Тиж 4" value={data.cpaW4} onChange={v=>update("cpaW4",v)} small/>
+            </Section>
+            <Section title="ROAS по тижнях">
+              <Field label="Тиж 1" value={data.roasW1} onChange={v=>update("roasW1",v)} small/>
+              <Field label="Тиж 2" value={data.roasW2} onChange={v=>update("roasW2",v)} small/>
+              <Field label="Тиж 3" value={data.roasW3} onChange={v=>update("roasW3",v)} small/>
+              <Field label="Тиж 4" value={data.roasW4} onChange={v=>update("roasW4",v)} small/>
+            </Section>
+            <Section title="Топ товарів">
+              {data.products.map((p,i)=>(
+                <div key={i} style={{width:"100%",padding:"8px 0",borderTop:i?`1px solid ${INK50}`:"none"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:BLUE,marginBottom:6}}>Товар {i+1}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                    <Field label="Назва" value={p.name} onChange={v=>updateArr("products",i,"name",v)} type="text"/>
+                    <Field label="Дохід" value={p.revenue} onChange={v=>updateArr("products",i,"revenue",v)} small/>
+                    <Field label="Продажів" value={p.sales} onChange={v=>updateArr("products",i,"sales",v)} small/>
+                    <Field label="ROAS" value={p.roas} onChange={v=>updateArr("products",i,"roas",v)} small/>
+                  </div>
+                </div>
+              ))}
+            </Section>
+            <Section title="Креативи">
+              {data.creatives.map((c,i)=>(
+                <div key={i} style={{width:"100%",padding:"8px 0",borderTop:i?`1px solid ${INK50}`:"none"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:BLUE,marginBottom:6}}>Креатив {i+1}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                    <Field label="Назва" value={c.name} onChange={v=>updateArr("creatives",i,"name",v)} type="text"/>
+                    <Field label="CTR %" value={c.ctr} onChange={v=>updateArr("creatives",i,"ctr",v)} small/>
+                    <Field label="CPA" value={c.cpa} onChange={v=>updateArr("creatives",i,"cpa",v)} small/>
+                    <Field label="ROAS" value={c.roas} onChange={v=>updateArr("creatives",i,"roas",v)} small/>
+                    <Field label="Покупок" value={c.purchases} onChange={v=>updateArr("creatives",i,"purchases",v)} small/>
+                  </div>
+                </div>
+              ))}
+            </Section>
+            <Section title="Висновки">
+              {data.conclusions.map((c,i)=>(
+                <div key={i} style={{width:"100%",padding:"8px 0",borderTop:i?`1px solid ${INK50}`:"none"}}>
+                  <Field label={`Заголовок ${i+1}`} value={c.title} onChange={v=>updateArr("conclusions",i,"title",v)} type="text"/>
+                  <div style={{marginTop:6}}>
+                    <label style={{fontSize:11,color:INK400,display:"block",marginBottom:3,fontWeight:500}}>Текст</label>
+                    <textarea value={c.text} onChange={e=>updateArr("conclusions",i,"text",e.target.value)} style={{width:"100%",padding:"7px 10px",border:`1px solid ${INK100}`,borderRadius:8,fontSize:12,color:INK800,resize:"vertical",minHeight:48,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  </div>
+                </div>
+              ))}
+            </Section>
+            <Section title="Плани">
+              {data.plans.map((p,i)=>(
+                <div key={i} style={{width:"100%",padding:"8px 0",borderTop:i?`1px solid ${INK50}`:"none"}}>
+                  <Field label={`Заголовок ${i+1}`} value={p.title} onChange={v=>updateArr("plans",i,"title",v)} type="text"/>
+                  <div style={{marginTop:6}}>
+                    <label style={{fontSize:11,color:INK400,display:"block",marginBottom:3,fontWeight:500}}>Опис</label>
+                    <textarea value={p.text} onChange={e=>updateArr("plans",i,"text",e.target.value)} style={{width:"100%",padding:"7px 10px",border:`1px solid ${INK100}`,borderRadius:8,fontSize:12,color:INK800,resize:"vertical",minHeight:48,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  </div>
+                </div>
+              ))}
+            </Section>
+            <Section title="KPI наступного місяця">
+              <Field label="Бюджет" value={data.nextBudget} onChange={v=>update("nextBudget",v)} small/>
+              <Field label="Оборот" value={data.nextRevenue} onChange={v=>update("nextRevenue",v)} small/>
+              <Field label="Покупок" value={data.nextPurchases} onChange={v=>update("nextPurchases",v)} small/>
+              <Field label="ROAS" value={data.nextRoas} onChange={v=>update("nextRoas",v)} small/>
+              <Field label="Ср. чек" value={data.nextAvgCheck} onChange={v=>update("nextAvgCheck",v)} small/>
+              <Field label="CPA" value={data.nextCpa} onChange={v=>update("nextCpa",v)} small/>
+            </Section>
+            <div style={{ height: 40 }}/>
+          </div>
+        </div>
+      )}
+
+      {/* Preview */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 24px", borderBottom: `1px solid ${INK100}`, background: "#fff" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button onClick={() => setShowForm(!showForm)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${INK100}`, background: showForm ? INK50 : "#fff", cursor: "pointer", fontSize: 12, color: INK800, fontWeight: 500 }}>
+              {showForm ? "Сховати форму" : "Показати форму"}
+            </button>
+            <span style={{ fontSize: 13, color: INK400 }}>Слайд {slide+1} / {SLIDES.length}</span>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={()=>setSlide(Math.max(0,slide-1))} disabled={slide===0} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${INK100}`,background:"#fff",cursor:slide===0?"default":"pointer",opacity:slide===0?0.4:1,fontSize:13,color:INK800}}>←</button>
+            <button onClick={()=>setSlide(Math.min(SLIDES.length-1,slide+1))} disabled={slide===SLIDES.length-1} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${INK100}`,background:"#fff",cursor:slide===SLIDES.length-1?"default":"pointer",opacity:slide===SLIDES.length-1?0.4:1,fontSize:13,color:INK800}}>→</button>
+          </div>
+        </div>
+        <div className="no-print" style={{ display: "flex", gap: 6, padding: "10px 24px", overflowX: "auto", background: "#fff", borderBottom: `1px solid ${INK100}` }}>
+          {SLIDES.map((s,i) => (
+            <button key={i} onClick={()=>setSlide(i)} style={{ padding: "5px 12px", borderRadius: 20, border: "none", background: i===slide ? GRADIENT : INK50, color: i===slide ? "#fff" : INK400, fontSize: 11, fontWeight: i===slide ? 700 : 500, cursor: "pointer", whiteSpace: "nowrap" }}>{s.name}</button>
+          ))}
+        </div>
+        <div className="slide-area" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflow: "auto" }}>
+          <div className="slide-container" style={{ width: "100%", maxWidth: 900, aspectRatio: "16/9" }}>
+            <SlideC d={data} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
